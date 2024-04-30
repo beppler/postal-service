@@ -62,7 +62,7 @@ func parse(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(parsed)
 	if err != nil {
-		slog.Error("Error parsing address", "error", err)
+		slog.Error("Error marshalling address", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
