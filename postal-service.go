@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
 	"time"
 
 	parser "github.com/openvenues/gopostal/parser"
@@ -17,7 +21,26 @@ func main() {
 	mux.HandleFunc("/healthy", healthy)
 	mux.HandleFunc("/parse/{address...}", parse)
 
-	http.ListenAndServe(":9876", mux)
+	server := &http.Server{Addr: ":9876", Handler: mux}
+
+	go func() {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt)
+		<-stop
+		slog.Info("Stopping server")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			slog.Error("Server shutdown error", "error", err)
+		}
+	}()
+
+	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("Error starting server", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("Server stopped")
 }
 
 func healthy(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +52,7 @@ func parse(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != "GET" {
 		slog.Error("Method not allowed parsing address", "method", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 
